@@ -1,47 +1,65 @@
 import pandas as pd
 import matplotlib.pyplot as plt
-from datetime import datetime
+import matplotlib.dates as mdates
 
 # Load the Bitcoin price data
-bitcoin_df = pd.read_csv('bitstampUSD_1-min_data_2012-01-01_to_2021-03-31.csv')
+df = pd.read_csv('bitstampUSD_1-min_data_2012-01-01_to_2021-03-31.csv')
 
 # Convert Unix timestamps to datetime
-bitcoin_df['Timestamp'] = pd.to_datetime(bitcoin_df['Timestamp'], unit='s')
+df['Timestamp'] = pd.to_datetime(df['Timestamp'], unit='s')
 
 # Drop rows with NaN values
-bitcoin_df = bitcoin_df.dropna()
+df = df.dropna()
 
-# Assuming the CSV file has columns 'created_at', 'user_followers_count', 'text', and 'Sentiment_Score'
+# Extract year from Timestamp
+df['Year'] = df['Timestamp'].dt.year
+
+# Monthly Mean Sentiment Analysis Results
 sentiment_df = pd.read_csv('sorted_sentiments.csv', parse_dates=['created_at'])
-
-# Filter out rows where the sentiment score is zero
 filtered_sentiment_df = sentiment_df[sentiment_df['text'] != 0]
 
-# Group by year and calculate the mean sentiment score for each year
-yearly_sentiment_df = filtered_sentiment_df.groupby(filtered_sentiment_df['created_at'].dt.year).mean(numeric_only=True)
+# Set timezone for sentiment_df index
+monthly_sentiment_df = filtered_sentiment_df.groupby([filtered_sentiment_df['created_at'].dt.to_period("M")]).mean(numeric_only=True)
+monthly_sentiment_df.index = pd.to_datetime(monthly_sentiment_df.index.astype(str)).tz_localize('UTC')
 
-# Plotting both Bitcoin price and Yearly Mean Sentiment Analysis Results
-plt.figure(figsize=(15, 8))
+# Set timezone for sentiment_df 'created_at' column
+filtered_sentiment_df['created_at'] = filtered_sentiment_df['created_at'].dt.tz_localize('UTC')
+filtered_sentiment_df['Year'] = filtered_sentiment_df['created_at'].dt.year
 
-# Plot Bitcoin Price Over Time
-plt.subplot(2, 1, 1)  # 2 rows, 1 column, first subplot
-plt.plot(bitcoin_df['Timestamp'], bitcoin_df['Close'], label='Bitcoin Close Price')
-plt.title('Bitcoin Price Over Time')
-plt.xlabel('Timestamp')
-plt.ylabel('Close Price')
-plt.legend()
-plt.grid(True)
+# Plotting for each year
+for year in df['Year'].unique():
+    # Filter data for the current year
+    year_df = df[df['Year'] == year]
 
-# Plot Yearly Mean Sentiment Analysis Results
-plt.subplot(2, 1, 2)  # 2 rows, 1 column, second subplot
-plt.plot(yearly_sentiment_df.index, yearly_sentiment_df['text'], marker='o', label='Mean Sentiment Score')
-plt.title('Yearly Mean Sentiment Analysis Results')
-plt.xlabel('Year')
-plt.ylabel('Mean Sentiment Score')
-plt.legend()
-plt.grid(True)
-plt.xticks(rotation=45, ha='right')
-plt.tight_layout()
+    # Plot Bitcoin Price Over Time
+    plt.figure(figsize=(15, 8))
+    ax1 = plt.subplot(2, 1, 1)  # 2 rows, 1 column, first subplot
+    ax1.plot(year_df['Timestamp'], year_df['Close'], label='Close Price', color='blue')
+    ax1.set_title(f'Bitcoin Price - {year}')
+    ax1.set_xlabel('Timestamp')
+    ax1.set_ylabel('Close Price')
+    ax1.legend()
+    ax1.grid(True)
 
-# Show the overall plot with both subplots
-plt.show()
+    # Filter sentiment data for the current year
+    year_sentiment_df = monthly_sentiment_df[monthly_sentiment_df.index.year == year]
+
+    # Plot Monthly Mean Sentiment Analysis Results with abbreviated Month-Year format
+    ax2 = plt.subplot(2, 1, 2, sharex=ax1)  # 2 rows, 1 column, second subplot
+    ax2.plot(year_sentiment_df.index, year_sentiment_df['text'], marker='o', label='Mean Sentiment Score', color='orange')
+
+    # Set the date formatter for the x-axis
+    ax2.xaxis.set_major_locator(mdates.YearLocator())
+    ax2.xaxis.set_major_formatter(mdates.DateFormatter('%b-%Y'))
+
+    ax2.set_xlabel('Timestamp / Month-Year')
+    ax2.set_ylabel('Mean Sentiment Score')
+    ax2.set_title(f'Monthly Mean Sentiment Analysis - {year}')
+    ax2.legend()
+    ax2.grid(True)
+
+    # Adjust layout and show the plot
+    plt.xticks(rotation=45, ha='right')
+    plt.tight_layout()
+    plt.subplots_adjust(hspace=0.4)
+    plt.show()
